@@ -80,11 +80,12 @@ pip install torch torchvision numpy pandas opencv-python matplotlib pillow trans
 
 Then, you can open and run the Jupyter notebooks to see the implementation and results for each approach.
 
-## Expected Results and Performance
+## Results and Performance
 
 *   **Accurate Debris Segmentation:** Both approaches are capable of generating precise masks that effectively isolate debris from the background, with varying degrees of accuracy depending on the model and scene complexity.
 *   **Reliable Volume Estimation:** The volume estimation provides a good approximation of the amount of debris, which can be further improved with more sophisticated 3D data.
 *   **Flexible Zero-Shot Detection:** The semantic similarity approach demonstrates the ability to detect new types of debris without retraining the vision model, offering a highly adaptable solution.
+<img width="800" height="290" alt="image" src="https://github.com/user-attachments/assets/a68140f8-85bb-4dd2-ada0-58537fce8f65" />
 
 ## Limitations and Future Work
 
