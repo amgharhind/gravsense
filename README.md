@@ -287,20 +287,22 @@ any other component.
 
 ---
 
+<!--
 ## CV line
 
-> Built **GravSense**: a production debris detection and volume estimation system.
-> Replaced a fragile ADE20K dominant-class heuristic with an open-vocabulary
-> **Grounded SAM** pipeline (GroundingDINO text → bounding boxes → SAM masks).
-> Tuned the detector for real-world scenes: expanded the text query to cover
-> truck-bed and skip-container debris, lowered detection thresholds for low-contrast
-> scenes, and added a post-detection **vegetation filter** that drops tree/plant
-> false positives before SAM mask generation.
-> Added **Depth Anything V2** (metric outdoor) for automatic pile-height estimation
-> from a single RGB photo, and **GroundingDINO auto-calibration** for reference-width
-> detection — both running in parallel as part of the same API request.
-> Deployed as an async **FastAPI** service (thread-pool executor, Pydantic schemas),
-> containerised with **Docker Compose** (model cache volume), browser UI with depth
-> visualisation and a dedicated **Gravat (debris) volume** result card in the
-> pipeline log, and a **GitHub Actions** CI pipeline
-> (mocked-inference pytest, Docker build + smoke test).
+Built **GravSense**: a production debris detection and volume estimation system.
+Replaced a fragile ADE20K dominant-class heuristic with an open-vocabulary
+**Grounded SAM** pipeline (GroundingDINO text → bounding boxes → SAM masks).
+Tuned the detector for real-world scenes: expanded the text query to cover
+truck-bed and skip-container debris, lowered detection thresholds for low-contrast
+scenes, and added a post-detection **vegetation filter** that drops tree/plant
+false positives before SAM mask generation.
+Added **Depth Anything V2** (metric outdoor) for automatic pile-height estimation
+from a single RGB photo, and **GroundingDINO auto-calibration** for reference-width
+detection — both running in parallel as part of the same API request.
+Deployed as an async **FastAPI** service (thread-pool executor, Pydantic schemas),
+containerised with **Docker Compose** (model cache volume), browser UI with depth
+visualisation and a dedicated **Gravat (debris) volume** result card in the
+pipeline log, and a **GitHub Actions** CI pipeline
+(mocked-inference pytest, Docker build + smoke test).
+-->
