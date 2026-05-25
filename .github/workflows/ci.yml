@@ -39,6 +39,9 @@ jobs:
             transformers
           pip install torch --index-url https://download.pytorch.org/whl/cpu
 
+      - name: Upgrade build tools
+        run: pip install --upgrade setuptools wheel
+
       - name: Install package (editable)
         run: pip install -e . --no-deps
 
