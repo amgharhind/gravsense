@@ -29,6 +29,7 @@ jobs:
         run: |
           pip install \
             fastapi \
+            python-multipart \
             httpx \
             pytest \
             pytest-asyncio \
