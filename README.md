@@ -1,100 +1,306 @@
-# Gravat Detection and Volume Estimation
+# GravSense
 
-## Overview
+Construction debris detection and volume estimation from a single photograph.
 
-This project provides a comprehensive solution for detecting and estimating the volume of "gravat" (debris or rubble) in images, a common challenge in construction and industrial sites. The system leverages advanced computer vision techniques, including semantic segmentation with pre-trained models and unsupervised clustering, to accurately identify and isolate debris from complex backgrounds. The ultimate goal is to provide a reliable method for quantifying debris volume, which is crucial for resource management, site safety, and operational efficiency.
+[![CI](https://github.com/amgharhind/gravsense/actions/workflows/ci.yml/badge.svg)](https://github.com/amgharhind/gravsense/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 
-##  Motivation and Importance
+---
 
-Manual estimation of debris volume is a time-consuming, labor-intensive, and often inaccurate process. Automating this task offers significant benefits, including:
+## What it does
 
-*   **Improved Accuracy:** Computer vision models can provide more consistent and precise volume estimations compared to human observation.
-*   **Enhanced Safety:** Automated monitoring of debris can help identify potential hazards on construction sites, contributing to a safer working environment.
-*   **Optimized Resource Management:** Accurate volume data enables better planning for debris removal and disposal, leading to cost savings and more efficient resource allocation.
-*   **Data-Driven Insights:** The collected data can be used for long-term analysis, helping to optimize workflows and improve project management.
+Upload a construction site photo. GravSense returns:
 
-## Key Features
+- **Pixel-precise debris mask** — GroundingDINO locates debris by text prompt, SAM generates the mask
+- **Automatic reference-width calibration** — GroundingDINO detects a vehicle/truck and computes the real-world image scale
+- **Automatic pile height** — Depth Anything V2 (metric outdoor) estimates pile depth from a single RGB photo
+- **Surface area + volume** — derived from mask pixels × calibrated scale × depth
 
-*   **Multiple Detection Approaches:** The project explores and implements several methods for debris detection, including:
-    *   **DeepLabV3:** A state-of-the-art semantic segmentation model pre-trained on the COCO dataset, capable of identifying a wide range of objects and materials.
-    *   **SegFormer:** A powerful and efficient Transformer-based model for semantic segmentation, fine-tuned on the ADE20K dataset.
-    *   **Unsupervised K-Means Clustering:** A data-driven approach to segmenting images based on color and texture, useful when pre-trained models do not cover the specific type of debris.
-*   **Volume Estimation:** The system includes a detailed methodology for estimating the surface area and volume of the detected debris, taking into account real-world reference measurements.
-*   **Semantic Similarity for Zero-Shot Detection:** A novel approach that combines image segmentation with language models (SentenceTransformers) to identify debris without requiring a model pre-trained on a specific "gravat" class. This allows for flexible, zero-shot detection of various materials.
+Everything runs server-side. The browser UI shows the result in four views: original image, debris overlay, full depth map, and depth-on-debris only.
 
-## Methodologies Explored
+---
 
-This project investigates two primary methodologies for gravat detection and analysis:
-
-### Approach 1: Segmentation and Volume Calculation (Notebook: `gravat-detection-volume-calculation_amghar_hind_final.ipynb`)
-
-This approach focuses on segmenting debris from images and subsequently calculating its volume. It explores different segmentation techniques:
-
-1.  **DeepLabV3 Segmentation:**
-    *   **Process:** Utilizes a pre-trained DeepLabV3 ResNet-101 model (trained on COCO dataset) to perform semantic segmentation on input images. The model identifies various object classes, and a specific class ID corresponding to debris-like material is used to generate a binary mask.
-    *   **Example:** The notebook demonstrates loading an image, preprocessing it, running inference with DeepLabV3, and generating a mask for a target class (e.g., class ID 12 for "gravat-like" material).
-
-2.  **K-Means Clustering for Segmentation:**
-    *   **Process:** Applies K-Means clustering directly to the image pixel data to group similar colors/textures into clusters. One of these clusters is then identified as representing the debris.
-    *   **Example:** The notebook illustrates loading an image, reshaping its pixels, applying K-Means (e.g., with k=3), and visualizing the resulting binary mask for a chosen cluster.
-
-3.  **Volume Calculation:**
-    *   **Process:** After obtaining a binary mask of the debris, the system calculates the pixel area of the detected region. By providing a known real-world reference measurement (e.g., the width of an object in the image), the pixel area is converted into a real-world surface area (e.g., in square centimeters). Volume can then be estimated based on this surface area and an assumed average height.
-    *   **Example:** The notebook includes functions to calculate surface area from a mask and a reference width, demonstrating how to derive quantitative measurements from the segmentation results.
-
-### Approach 2: Zero-Shot Detection with SegFormer and Semantic Similarity (Notebook: `gravat-segformer-b0-finetuned-ade-512-512.ipynb`)
-
-This innovative approach combines a powerful segmentation model with a language model to identify debris semantically, without explicit training on a "gravat" class:
-
-1.  **SegFormer Segmentation:**
-    *   **Process:** An image is processed by a pre-trained SegFormer model (e.g., `nvidia/segformer-b0-finetuned-ade-512-512`). This model outputs segmentation masks for all detected objects and their corresponding labels.
-    *   **Example:** The notebook shows how to load an image, use the SegFormer feature extractor and model, perform inference, and obtain predicted class labels for each pixel.
-
-2.  **Semantic Identification with SentenceTransformers:**
-    *   **Process:** The labels generated by SegFormer are encoded into high-dimensional vectors using a SentenceTransformer model. Simultaneously, a target query (e.g., "debris pile" or "rubble") is also encoded. Cosine similarity is then calculated between the query vector and all label vectors. The object label with the highest similarity score is identified as the target debris.
-    *   **Example:** The notebook demonstrates how to map the segmentation result to a binary mask for a semantically identified class (e.g., class ID 124 for "gravat-like" material in ADE20K dataset) and visualize the result.
-
-## Technology Stack
-
-*   **Core Libraries:** PyTorch, NumPy, Pandas, OpenCV, Matplotlib, PIL
-*   **Semantic Segmentation Models:** DeepLabV3 (from `torchvision`), SegFormer (from Hugging Face `transformers`)
-*   **Semantic Similarity:** SentenceTransformer (from Hugging Face `sentence-transformers`)
-*   **Development Environment:** Jupyter Notebook
-
-## Project Structure and Files
+## Architecture
 
 ```
-gravat-detection/
-├── README.md                                                     # This file
-├── gravat-detection-volume-calculation_amghar_hind_final.ipynb   # Jupyter notebook implementing DeepLabV3, K-Means, and volume calculation
-└── gravat-segformer-b0-finetuned-ade-512-512.ipynb             # Jupyter notebook implementing SegFormer with semantic similarity for zero-shot detection
+Browser  ──POST /analyze──►  FastAPI  (async, thread-pool executor)
+                                │
+                ┌───────────────┼───────────────────────────────┐
+                │               │                               │
+                ▼               ▼ (parallel)                    ▼ (parallel)
+       ┌─────────────────┐  ┌───────────────────────┐  ┌──────────────────────┐
+       │  Debris          │  │  Pile Height           │  │  Reference Width     │
+       │  Detection       │  │  (Depth Anything V2)   │  │  Auto-calibration    │
+       │                  │  │                        │  │                      │
+       │  GroundingDINO   │  │  Metric Outdoor Small  │  │  GroundingDINO       │
+       │  (text→boxes)    │  │  depth map (metres)    │  │  (detects truck/car) │
+       │      +           │  │                        │  │  → known width ÷     │
+       │  SAM vit-base    │  │  pile = ground depth   │  │    bbox fraction     │
+       │  (boxes→mask)    │  │      − pile depth      │  │                      │
+       └────────┬─────────┘  └──────────┬────────────┘  └──────────┬───────────┘
+                │                       │                           │
+                └───────────────────────┴───────────────────────────┘
+                                        │
+                                        ▼
+                             ┌─────────────────────┐
+                             │   volume.py          │
+                             │   mask → area (cm²)  │
+                             │   area × height (cm) │
+                             │   = volume (cm³)     │
+                             └─────────────────────┘
+                                        │
+                                        ▼
+                             JSON response + 4 images
+                             (overlay, depth map,
+                              depth-on-debris, original)
 ```
 
-## Getting Started
+**Baseline** — a SegFormer-b0 (ADE20K) detector is kept for benchmark comparison
+(`?method=segformer`). It uses the dominant predicted class as debris — the original
+research approach, intentionally preserved so both methods can be compared via the same API.
 
-To run this project, you will need a Python environment with the necessary libraries installed. You can install the required packages using pip:
+---
+
+## Features
+
+| | Grounded SAM (default) | SegFormer (baseline) |
+|---|---|---|
+| Detection | GroundingDINO text → boxes → SAM mask | ADE20K semantic seg, dominant class |
+| Needs retraining | No — open-vocabulary | No |
+| Debris in truck/skip | ✅ expanded query covers truck-bed scenes | ❌ class-based only |
+| Vegetation filter | ✅ drops tree/plant false positives | ❌ none |
+| Reference-width auto | ✅ GroundingDINO vehicle detection | ✅ same |
+| Depth auto (height) | ✅ Depth Anything V2 Metric | ✅ same |
+| Speed (CPU) | ~4–6 s | ~2–3 s |
+
+---
+
+## Quickstart
+
+### Docker (recommended — zero setup)
 
 ```bash
-pip install torch torchvision numpy pandas opencv-python matplotlib pillow transformers sentence-transformers
+git clone https://github.com/amgharhind/gravsense
+cd gravsense
+docker compose up --build
 ```
 
-Then, you can open and run the Jupyter notebooks to see the implementation and results for each approach.
+Open **http://localhost:8000** for the UI, **http://localhost:8000/docs** for the API.
 
-## Results and Performance
+First start downloads ~800 MB of models (GroundingDINO + SAM + Depth Anything V2).
+All subsequent starts are instant — models are cached in a named Docker volume.
 
-*   **Accurate Debris Segmentation:** Both approaches are capable of generating precise masks that effectively isolate debris from the background, with varying degrees of accuracy depending on the model and scene complexity.
-*   **Reliable Volume Estimation:** The volume estimation provides a good approximation of the amount of debris, which can be further improved with more sophisticated 3D data.
-*   **Flexible Zero-Shot Detection:** The semantic similarity approach demonstrates the ability to detect new types of debris without retraining the vision model, offering a highly adaptable solution.
-<img width="800" height="290" alt="image" src="https://github.com/user-attachments/assets/a68140f8-85bb-4dd2-ada0-58537fce8f65" />
+### Local (Python 3.10 / 3.11)
 
-## Limitations and Future Work
+```bash
+# Create a virtual environment (Python 3.13 is not yet supported by PyTorch on Windows)
+py -3.10 -m venv .venv && .venv\Scripts\activate   # Windows
+# python3.10 -m venv .venv && source .venv/bin/activate  # Linux/Mac
 
-*   **2D to 3D Assumption:** The current volume estimation is based on a 2D surface area and an assumed height, which is an approximation. Future work could involve using stereo cameras or other 3D sensors to capture more accurate depth information for true volumetric calculations.
-*   **Model Generalization:** The performance of the pre-trained models may vary depending on the specific type of debris and the complexity of the scene. Fine-tuning the models on a custom dataset of "gravat" images would likely improve performance.
-*   **Lighting and Environmental Conditions:** The accuracy of the segmentation can be affected by challenging lighting conditions, shadows, and occlusions. Advanced data augmentation and more robust models could help mitigate these issues.
-*   **Real-Time Processing:** For real-time applications, the processing pipeline would need to be optimized for speed, potentially by using smaller models or hardware acceleration.
+pip install -e ".[dev]"
+uvicorn gravsense.api.main:app --reload
+```
 
-## Acknowledgement
+---
 
-I would like to express my sincere gratitude to my supervisor, **EL HABIB Ben Lahmar**, for his support and valuable guidance throughout this project.
+## UI walkthrough
 
+The browser UI at `/` provides:
+
+1. **Upload** — drag-and-drop or click to browse
+2. **Method** — Grounded SAM or SegFormer
+3. **Calibration cards** — Auto/Manual toggle for each value
+   - *Reference width*: auto-detects a vehicle in the image (GroundingDINO)
+   - *Pile height*: auto-estimated via Depth Anything V2 after the mask is computed
+4. **Analyze** — single request, results appear inline
+5. **Image tabs**:
+   - `Original` — uploaded photo
+   - `Debris Mask` — green overlay on detected debris
+   - `Depth Map` — full-image plasma colormap (yellow = close, purple = far)
+   - `Depth on Debris` — depth colors inside the mask only, greyed outside
+6. **Stats** — detections, surface area, pile height (with source badge), volume
+7. **Pipeline log** — every step with status, detected labels + confidence, calibration source, depth value, and a dedicated **Gravat (debris) volume** result card at the end showing the final volume prominently
+
+---
+
+## API
+
+### `POST /analyze`
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `file` | image | — | JPEG or PNG |
+| `method` | `grounded_sam` \| `segformer` | `grounded_sam` | Detection method |
+| `reference_width_cm` | float | 100 | Manual fallback — real-world image width (cm) |
+| `assumed_height_cm` | float | 30 | Manual fallback — pile height (cm) |
+| `auto_calibrate` | bool | true | Run Depth Anything V2 + GroundingDINO auto-calibration in parallel |
+| `include_overlay` | bool | true | Include base64 images in response |
+
+**Response (JSON):**
+
+```json
+{
+  "method": "grounded_sam",
+  "n_detections": 2,
+  "mask_pixel_count": 84320,
+  "surface_area_cm2": 3372.8,
+  "volume_cm3": 142870.4,
+  "reference_width_cm": 298.5,
+  "assumed_height_cm": 42.3,
+  "detected_labels": ["pile of construction debris", "rubble"],
+  "detection_scores": [0.871, 0.743],
+  "processing_time_s": 5.12,
+  "auto_reference_width_cm": 298.5,
+  "auto_reference_object": "truck",
+  "auto_reference_confidence": 0.912,
+  "auto_pile_height_cm": 42.3,
+  "overlay_b64": "...",
+  "depth_map_b64": "...",
+  "depth_on_debris_b64": "..."
+}
+```
+
+### `GET /health`
+
+```json
+{ "status": "ok", "version": "1.0.0" }
+```
+
+---
+
+## Calibration — how it works automatically
+
+**Reference width** (`auto_reference_object`)
+
+GroundingDINO scans for vehicles with the query `"truck. lorry. van. car. vehicle."`.
+When one is found, its bounding-box pixel width is compared against a known real-world
+width (truck ≈ 240 cm, car ≈ 180 cm) to compute the full-image real-world scale:
+
+```
+reference_width_cm = known_object_cm × (image_width_px / bbox_width_px)
+```
+
+**Pile height** (`auto_pile_height_cm`)
+
+Depth Anything V2 Metric Outdoor Small produces a per-pixel depth map in metres.
+The debris mask from detection is dilated by 40 px to sample surrounding ground pixels:
+
+```
+height = |median(ground_ring_depths) − median(pile_depths)| × 100
+```
+
+When no vehicle is found or auto-calibrate is disabled, the API falls back to the
+manual `reference_width_cm` / `assumed_height_cm` query parameters.
+
+---
+
+## Detection robustness
+
+**Expanded text query**
+
+The Grounded SAM detector uses a broad open-vocabulary query that covers the range of
+debris scenes found on construction sites:
+
+```
+construction debris · rubble · gravel · building waste · gravat ·
+demolition waste · rubble pile · sand pile · broken concrete ·
+concrete rubble · crushed stone · aggregate · debris in truck ·
+rubble in truck bed · construction waste · excavation debris ·
+mixed debris · rock debris
+```
+
+Thresholds are set to `box_threshold=0.20 / text_threshold=0.15` to catch debris inside
+truck beds and skips, where the visual context lowers model confidence.
+
+**Vegetation false-positive filter**
+
+After GroundingDINO returns detections, any box whose matched label contains a
+vegetation term (`tree`, `plant`, `bush`, `grass`, `shrub`, `foliage`, …) is discarded
+before SAM generates its mask. This prevents trees and hedges visible in the background
+from being counted as debris.
+
+---
+
+## Project structure
+
+```
+gravsense/
+├── core/
+│   ├── grounded_sam.py        ← GroundingDINO + SAM detector
+│   ├── segformer_detector.py  ← ADE20K SegFormer baseline (for comparison)
+│   ├── depth_estimator.py     ← Depth Anything V2 + plasma colormap
+│   ├── auto_calibrate.py      ← GroundingDINO reference-width detection
+│   └── volume.py              ← mask → surface area → volume
+└── api/
+    ├── main.py                ← FastAPI routes, async inference, lazy singletons
+    ├── schemas.py             ← Pydantic response models
+    └── static/
+        └── index.html         ← Single-file browser UI (no build step)
+
+tests/
+└── test_api.py                ← pytest with fully mocked inference (no GPU needed)
+
+notebooks/
+└── (original Kaggle research — SegFormer exploration, K-Means, DeepLabV3)
+
+Dockerfile                     ← Python 3.10-slim, 2-stage build
+docker-compose.yml             ← API + HuggingFace model cache volume
+.github/workflows/ci.yml       ← test (py 3.10 + 3.11) → docker build → smoke test
+pyproject.toml
+requirements.txt
+```
+
+---
+
+## Run tests
+
+```bash
+pip install pytest pytest-asyncio httpx
+pytest tests/ -v
+```
+
+All model inference is mocked. CI runs in ~60 seconds without a GPU.
+
+---
+
+## Models used
+
+| Model | Source | Purpose |
+|-------|--------|---------|
+| `IDEA-Research/grounding-dino-tiny` | HuggingFace | Text → bounding boxes |
+| `facebook/sam-vit-base` | HuggingFace | Boxes → pixel masks |
+| `depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf` | HuggingFace | Monocular depth (metres) |
+| `nvidia/segformer-b0-finetuned-ade-512-512` | HuggingFace | Semantic segmentation baseline |
+
+All models download automatically on first request and are cached in the Docker volume.
+No API keys or accounts required.
+
+---
+
+## Next upgrade — YOLO11-seg fine-tuned on construction waste
+
+Fine-tune `yolo11n-seg.pt` on the Roboflow construction-waste dataset for
+real-time (30+ FPS) inference — useful for video feeds or drone footage.
+This adds a fourth `method=yolo` option to the existing API without changing
+any other component.
+
+---
+
+## CV line
+
+> Built **GravSense**: a production debris detection and volume estimation system.
+> Replaced a fragile ADE20K dominant-class heuristic with an open-vocabulary
+> **Grounded SAM** pipeline (GroundingDINO text → bounding boxes → SAM masks).
+> Tuned the detector for real-world scenes: expanded the text query to cover
+> truck-bed and skip-container debris, lowered detection thresholds for low-contrast
+> scenes, and added a post-detection **vegetation filter** that drops tree/plant
+> false positives before SAM mask generation.
+> Added **Depth Anything V2** (metric outdoor) for automatic pile-height estimation
+> from a single RGB photo, and **GroundingDINO auto-calibration** for reference-width
+> detection — both running in parallel as part of the same API request.
+> Deployed as an async **FastAPI** service (thread-pool executor, Pydantic schemas),
+> containerised with **Docker Compose** (model cache volume), browser UI with depth
+> visualisation and a dedicated **Gravat (debris) volume** result card in the
+> pipeline log, and a **GitHub Actions** CI pipeline
+> (mocked-inference pytest, Docker build + smoke test).

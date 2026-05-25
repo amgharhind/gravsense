@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GravSense — Debris Analysis</title>
+  <style>
+    /* ── Reset & tokens ───────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --border:   #2a2d3e;
+      --accent:   #22c55e;   /* green-500 */
+      --accent2:  #16a34a;
+      --muted:    #6b7280;
+      --text:     #e5e7eb;
+      --subtext:  #9ca3af;
+      --danger:   #ef4444;
+      --card-bg:  #1e2130;
+      --radius:   12px;
+      --radius-sm: 6px;
+      --shadow:   0 4px 24px rgba(0,0,0,.45);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ───────────────────────────────────────────────────────── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header .logo {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: grid; place-items: center;
+      font-size: 18px;
+    }
+    header h1 { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+    header span { color: var(--muted); font-size: 13px; margin-left: 4px; }
+    .badge {
+      margin-left: auto;
+      font-size: 11px;
+      background: rgba(34,197,94,.12);
+      color: var(--accent);
+      border: 1px solid rgba(34,197,94,.25);
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+
+    /* ── Main layout ─────────────────────────────────────────────────── */
+    main {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 24px;
+      padding: 28px 32px;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 860px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    /* ── Panel shell ─────────────────────────────────────────────────── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    .panel-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+
+    /* ── Drop zone ───────────────────────────────────────────────────── */
+    #drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 32px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      position: relative;
+      overflow: hidden;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(34,197,94,.04);
+    }
+    #drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    }
+    #drop-zone .icon {
+      font-size: 36px; margin-bottom: 10px; display: block;
+    }
+    #drop-zone .hint { color: var(--subtext); font-size: 13px; line-height: 1.6; }
+    #drop-zone .hint strong { color: var(--text); }
+    #preview-wrap {
+      display: none;
+      margin-top: 14px;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    #preview-wrap img {
+      width: 100%; display: block;
+      max-height: 220px; object-fit: cover;
+    }
+    #file-name {
+      font-size: 12px; color: var(--subtext);
+      margin-top: 8px; text-align: center;
+    }
+
+    /* ── Controls ────────────────────────────────────────────────────── */
+    .controls { margin-top: 20px; display: flex; flex-direction: column; gap: 14px; }
+
+    label { font-size: 12px; font-weight: 600; color: var(--subtext);
+            text-transform: uppercase; letter-spacing: .06em; display: block;
+            margin-bottom: 6px; }
+
+    .method-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    }
+    .method-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      text-align: left;
+    }
+    .method-btn.active {
+      border-color: var(--accent);
+      background: rgba(34,197,94,.06);
+    }
+    .method-btn .m-name { font-weight: 700; font-size: 13px; }
+    .method-btn .m-desc { font-size: 11px; color: var(--subtext); margin-top: 2px; }
+    .method-btn.active .m-name { color: var(--accent); }
+
+    .input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* ── Calibration input card ──────────────────────────────────────── */
+    .cal-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      transition: border-color .2s;
+    }
+    .cal-card.is-auto { border-color: rgba(34,197,94,.45); }
+
+    .cal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .cal-label { font-size: 11px; font-weight: 600; color: var(--muted);
+                 text-transform: uppercase; letter-spacing: .06em; }
+
+    /* auto/manual pill toggle */
+    .cal-toggle {
+      display: flex; border-radius: 20px; overflow: hidden;
+      border: 1px solid var(--border); font-size: 10px; font-weight: 700;
+    }
+    .cal-toggle button {
+      padding: 2px 8px; border: none; cursor: pointer;
+      background: transparent; color: var(--muted);
+      transition: background .15s, color .15s;
+    }
+    .cal-toggle button.active-tab {
+      background: var(--accent); color: #fff;
+    }
+
+    .cal-value-wrap { position: relative; }
+    input[type="number"] {
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      border-radius: 0;
+      padding: 4px 0;
+      color: var(--text);
+      font-size: 20px; font-weight: 700;
+      outline: none;
+      transition: border-color .2s;
+    }
+    input[type="number"]:focus { border-bottom-color: var(--accent); }
+    input[type="number"]:disabled {
+      color: var(--accent); cursor: default; border-bottom-color: transparent;
+    }
+
+    .cal-unit { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+    .auto-badge {
+      display: none; align-items: center; gap: 4px;
+      font-size: 10px; font-weight: 700; color: var(--accent);
+      margin-top: 4px;
+    }
+    .auto-badge.visible { display: flex; }
+    .auto-badge .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: .3; }
+    }
+
+    .manual-hint {
+      font-size: 10px; color: var(--muted); margin-top: 3px; display: none;
+    }
+
+    /* ── Help popover ────────────────────────────────────────────────── */
+    .help-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 16px; height: 16px;
+      background: var(--border); border-radius: 50%;
+      font-size: 10px; font-weight: 700; color: var(--subtext);
+      cursor: pointer; border: none;
+      margin-left: 6px; vertical-align: middle;
+      transition: background .15s;
+      flex-shrink: 0;
+    }
+    .help-btn:hover { background: var(--accent); color: #fff; }
+
+    .popover-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.55); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .popover-overlay.open { display: flex; }
+    .popover {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      max-width: 420px; width: 90%;
+      box-shadow: var(--shadow);
+    }
+    .popover h3 { font-size: 15px; margin-bottom: 16px; }
+    .popover h3 span { color: var(--accent); }
+    .popover-section { margin-bottom: 18px; }
+    .popover-section:last-of-type { margin-bottom: 0; }
+    .popover-section strong {
+      display: block; font-size: 12px;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    .popover-section p { font-size: 13px; color: var(--subtext); line-height: 1.65; }
+    .popover-section .formula {
+      margin-top: 8px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-family: monospace; font-size: 12px; color: var(--text);
+      line-height: 1.5;
+    }
+    .popover-section .example {
+      margin-top: 6px; font-size: 12px;
+      color: var(--accent); font-style: italic;
+    }
+    .popover-close {
+      margin-top: 20px; width: 100%;
+      padding: 9px; background: var(--border);
+      border: none; border-radius: var(--radius-sm);
+      color: var(--text); font-weight: 600; font-size: 13px;
+      cursor: pointer;
+    }
+    .popover-close:hover { background: var(--accent); color: #fff; }
+
+    /* ── Analyze button ──────────────────────────────────────────────── */
+    #analyze-btn {
+      width: 100%;
+      margin-top: 6px;
+      padding: 12px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background .15s, opacity .15s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    #analyze-btn:hover:not(:disabled) { background: var(--accent2); }
+    #analyze-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Results panel ───────────────────────────────────────────────── */
+    #results-panel {
+      display: flex; flex-direction: column; gap: 20px;
+    }
+
+    /* empty state */
+    #empty-state {
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; gap: 12px;
+      min-height: 400px;
+      color: var(--muted);
+    }
+    #empty-state .big-icon { font-size: 52px; opacity: .3; }
+    #empty-state p { font-size: 13px; line-height: 1.6; max-width: 260px; }
+
+    /* error */
+    #error-box {
+      display: none;
+      background: rgba(239,68,68,.1);
+      border: 1px solid rgba(239,68,68,.3);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      color: var(--danger);
+      font-size: 13px;
+    }
+
+    /* image comparison */
+    #img-compare {
+      display: none;
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .img-tabs {
+      display: flex; overflow-x: auto;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .img-tab {
+      padding: 10px 16px;
+      font-size: 12px; font-weight: 600; white-space: nowrap;
+      cursor: pointer; color: var(--muted);
+      border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s;
+      background: none; border-top: none; border-left: none; border-right: none;
+      flex-shrink: 0;
+    }
+    .img-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .img-pane { display: none; position: relative; }
+    .img-pane.active { display: block; }
+    .img-pane img {
+      width: 100%; display: block;
+      max-height: 360px; object-fit: contain;
+      background: #000;
+    }
+    .img-badge {
+      position: absolute; top: 10px; left: 10px;
+      background: rgba(0,0,0,.65); backdrop-filter: blur(4px);
+      border-radius: 20px; padding: 4px 12px;
+      font-size: 11px; font-weight: 600; color: #fff;
+    }
+    .depth-legend {
+      position: absolute; bottom: 10px; right: 10px;
+      background: rgba(0,0,0,.65); backdrop-filter: blur(4px);
+      border-radius: 6px; padding: 6px 10px;
+      font-size: 10px; color: #fff; display: flex; align-items: center; gap: 6px;
+    }
+    .depth-legend .gradient {
+      width: 60px; height: 8px; border-radius: 4px;
+      background: linear-gradient(to right, #fd2305, #5ec162, #21918c, #3b5289, #440154);
+    }
+
+    /* stats grid */
+    #stats-grid {
+      display: none;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    @media (min-width: 1100px) {
+      #stats-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+    }
+    .stat-label {
+      font-size: 11px; font-weight: 600;
+      color: var(--muted); text-transform: uppercase;
+      letter-spacing: .06em; margin-bottom: 6px;
+    }
+    .stat-value { font-size: 22px; font-weight: 800; line-height: 1; }
+    .stat-unit  { font-size: 11px; color: var(--subtext); margin-top: 4px; }
+    .stat-source {
+      font-size: 10px; margin-top: 4px;
+      padding: 2px 8px; border-radius: 20px; display: inline-block;
+    }
+    .stat-source.auto  { background: rgba(34,197,94,.12); color: var(--accent); }
+    .stat-source.manual{ background: rgba(107,114,128,.1); color: var(--muted); }
+
+    /* ── Pipeline log ────────────────────────────────────────────────── */
+    #pipeline-log {
+      display: none;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+    .log-header {
+      padding: 12px 16px;
+      font-size: 12px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .log-step {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .log-step:last-child { border-bottom: none; }
+    .log-body { flex: 1; min-width: 0; }
+    .log-title { font-weight: 600; margin-bottom: 2px; }
+    .log-detail { color: var(--subtext); font-size: 12px; line-height: 1.6; }
+    .log-detail .highlight { color: var(--accent); font-weight: 600; }
+    .log-detail .warn      { color: #f59e0b; font-weight: 600; }
+    .log-time {
+      font-size: 11px; color: var(--muted); flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    /* Volume result step */
+    .log-step.volume-step {
+      background: rgba(34,197,94,.06);
+      border-top: 1px solid rgba(34,197,94,.25);
+      border-bottom: none;
+      padding: 16px;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .volume-step .log-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--accent); margin-bottom: 4px;
+    }
+    .volume-result {
+      display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+    }
+    .volume-result .vol-main {
+      font-size: 28px; font-weight: 800; color: var(--accent); line-height: 1;
+    }
+    .volume-result .vol-unit { font-size: 14px; color: var(--subtext); font-weight: 600; }
+    .volume-result .vol-m3   { font-size: 13px; color: var(--muted); }
+    .volume-formula {
+      font-size: 12px; color: var(--subtext); margin-top: 4px;
+    }
+    .volume-formula .highlight { color: var(--accent); font-weight: 600; }
+
+    .chip {
+      font-size: 11px;
+      background: rgba(34,197,94,.1);
+      color: var(--accent);
+      border: 1px solid rgba(34,197,94,.2);
+      border-radius: 20px;
+      padding: 3px 10px;
+    }
+    .chip.no-label {
+      background: rgba(107,114,128,.1);
+      color: var(--muted);
+      border-color: rgba(107,114,128,.2);
+    }
+    .chip.warn {
+      background: rgba(245,158,11,.1);
+      color: #f59e0b;
+      border-color: rgba(245,158,11,.2);
+    }
+
+    /* method tag */
+    .method-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; font-weight: 700; color: var(--accent);
+    }
+    .method-tag::before {
+      content: ''; width: 6px; height: 6px;
+      background: var(--accent); border-radius: 50%; display: inline-block;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🪨</div>
+  <h1>GravSense <span>v1.0</span></h1>
+  <div class="badge" id="api-status">Connecting…</div>
+</header>
+
+<main>
+
+  <!-- ── Left panel: upload + controls ─────────────────────────────── -->
+  <div>
+    <div class="panel">
+      <p class="panel-title">Image</p>
+
+      <div id="drop-zone">
+        <input type="file" id="file-input" accept="image/*" />
+        <span class="icon">📷</span>
+        <div class="hint">
+          <strong>Drop an image here</strong><br>
+          or click to browse
+        </div>
+      </div>
+      <div id="preview-wrap">
+        <img id="preview-img" src="" alt="preview" />
+      </div>
+      <div id="file-name"></div>
+
+      <div class="controls">
+
+        <div>
+          <label>Detection method</label>
+          <div class="method-grid">
+            <button class="method-btn active" data-method="grounded_sam">
+              <div class="m-name">Grounded SAM</div>
+              <div class="m-desc">Text → boxes → mask</div>
+            </button>
+            <button class="method-btn" data-method="segformer">
+              <div class="m-name">SegFormer</div>
+              <div class="m-desc">ADE20K baseline</div>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label>
+            Calibration
+            <button class="help-btn" id="help-btn" title="How to find these values">?</button>
+          </label>
+          <div class="input-row">
+
+            <!-- Reference width -->
+            <div class="cal-card" id="card-refwidth">
+              <div class="cal-header">
+                <span class="cal-label">Ref width</span>
+                <div class="cal-toggle">
+                  <button id="rw-auto-btn" class="active-tab" onclick="setMode('refwidth','auto')">Auto</button>
+                  <button id="rw-manual-btn" onclick="setMode('refwidth','manual')">Manual</button>
+                </div>
+              </div>
+              <div class="cal-value-wrap">
+                <input type="number" id="ref-width" value="100" min="1" step="1" disabled />
+              </div>
+              <div class="cal-unit">cm (image width)</div>
+              <div class="auto-badge" id="rw-auto-badge">
+                <span class="dot"></span>
+                <span id="rw-auto-label">auto-detected</span>
+              </div>
+              <div class="manual-hint" id="rw-manual-hint">Enter real-world image width</div>
+            </div>
+
+            <!-- Pile height -->
+            <div class="cal-card" id="card-pileheight">
+              <div class="cal-header">
+                <span class="cal-label">Pile height</span>
+                <div class="cal-toggle">
+                  <button id="ph-auto-btn" class="active-tab" onclick="setMode('pileheight','auto')">Auto</button>
+                  <button id="ph-manual-btn" onclick="setMode('pileheight','manual')">Manual</button>
+                </div>
+              </div>
+              <div class="cal-value-wrap">
+                <input type="number" id="pile-height" value="30" min="1" step="1" disabled />
+              </div>
+              <div class="cal-unit">cm (depth estimate)</div>
+              <div class="auto-badge" id="ph-auto-badge">
+                <span class="dot"></span>
+                <span>Depth Anything V2</span>
+              </div>
+              <div class="manual-hint" id="ph-manual-hint">Measure pile depth on-site</div>
+            </div>
+
+          </div>
+        </div>
+
+        <button id="analyze-btn" disabled>
+          <span class="spinner" id="spinner"></span>
+          <span id="btn-label">Analyze Debris</span>
+        </button>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Right panel: results ──────────────────────────────────────── -->
+  <div id="results-panel">
+
+    <div id="error-box"></div>
+
+    <div id="empty-state">
+      <div class="big-icon">🔍</div>
+      <p>Upload a construction site image and click <strong>Analyze Debris</strong> to see the segmentation mask and volume estimates.</p>
+    </div>
+
+    <!-- Image tabs: Original / Debris Mask / Depth Map / Depth on Debris -->
+    <div id="img-compare">
+      <div class="img-tabs">
+        <button class="img-tab active" data-tab="original">Original</button>
+        <button class="img-tab" data-tab="overlay">Debris Mask</button>
+        <button class="img-tab" id="tab-depth"     data-tab="depth">Depth Map</button>
+        <button class="img-tab" id="tab-depth-debris" data-tab="depth-debris">Depth on Debris</button>
+        <span style="margin-left:auto;padding:10px 14px;flex-shrink:0" class="method-tag" id="method-tag"></span>
+      </div>
+      <div class="img-pane active" id="pane-original">
+        <img id="img-original" src="" alt="original" />
+        <div class="img-badge">Original</div>
+      </div>
+      <div class="img-pane" id="pane-overlay">
+        <img id="img-overlay" src="" alt="overlay" />
+        <div class="img-badge" style="background:rgba(34,197,94,.7)">Debris highlighted</div>
+      </div>
+      <div class="img-pane" id="pane-depth">
+        <img id="img-depth" src="" alt="depth map" />
+        <div class="img-badge" style="background:rgba(0,0,0,.7)">Depth Anything V2</div>
+        <div class="depth-legend">
+          <span>close</span>
+          <div class="gradient"></div>
+          <span>far</span>
+        </div>
+      </div>
+      <div class="img-pane" id="pane-depth-debris">
+        <img id="img-depth-debris" src="" alt="depth on debris" />
+        <div class="img-badge" style="background:rgba(0,0,0,.7)">Depth — debris only</div>
+        <div class="depth-legend">
+          <span>close</span>
+          <div class="gradient"></div>
+          <span>far</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div id="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Detections</div>
+        <div class="stat-value" id="stat-detections">—</div>
+        <div class="stat-unit">debris regions</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Surface area</div>
+        <div class="stat-value" id="stat-area">—</div>
+        <div class="stat-unit">cm²</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Pile height</div>
+        <div class="stat-value" id="stat-height">—</div>
+        <div class="stat-unit">cm</div>
+        <div class="stat-source" id="stat-height-src"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Est. volume</div>
+        <div class="stat-value" id="stat-volume">—</div>
+        <div class="stat-unit">cm³</div>
+      </div>
+    </div>
+
+    <!-- Pipeline log -->
+    <div id="pipeline-log">
+      <div class="log-header">
+        <span>Pipeline log</span>
+        <span id="log-total-time" style="font-weight:400;font-size:11px;color:var(--subtext)"></span>
+      </div>
+      <div id="log-steps"></div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ── Help popover ──────────────────────────────────────────────────── -->
+<div class="popover-overlay" id="help-overlay">
+  <div class="popover">
+    <h3>📐 How to find <span>calibration values</span></h3>
+
+    <div class="popover-section">
+      <strong>Reference width (cm)</strong>
+      <p>
+        The real-world width (in cm) that corresponds to the <em>full width of your photo</em>.
+        You need one object of known size visible in the image to calculate this.
+      </p>
+      <div class="formula">
+        ref_width = known_object_cm ÷ fraction_of_image_width
+      </div>
+      <p class="example">
+        Example: a truck bed is 230 cm wide and fills 80% of the image<br>
+        → reference width = 230 ÷ 0.80 = <strong>288 cm</strong>
+      </p>
+      <p class="example">
+        Truck <em>camion-gravats-2tonnes.jpg</em>: standard French benne ≈ 220–240 cm wide.<br>
+        If it fills the full frame, use <strong>230</strong>.
+      </p>
+    </div>
+
+    <div class="popover-section">
+      <strong>Pile height (cm)</strong>
+      <p>
+        The average vertical depth of the debris pile — used only to convert
+        surface area → volume. Choose the method that fits your situation:
+      </p>
+      <div class="formula">
+        On-site measurement  →  tape measure at the pile edge<br>
+        Visual estimate      →  1 truck load of rubble ≈ 30–50 cm<br>
+        Advanced             →  Depth Anything v2 (see README upgrade path)
+      </div>
+      <p class="example">
+        Default of <strong>30 cm</strong> is a reasonable first estimate for a
+        single truck-load of mixed demolition debris.
+      </p>
+    </div>
+
+    <button class="popover-close" id="help-close">Got it</button>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+let selectedMethod = 'grounded_sam';
+let selectedFile = null;
+let originalDataUrl = null;
+
+// ── Health check ──────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r = await fetch('/health');
+    const badge = document.getElementById('api-status');
+    if (r.ok) {
+      badge.textContent = 'API ready';
+      badge.style.background = 'rgba(34,197,94,.12)';
+      badge.style.color = '#22c55e';
+      badge.style.borderColor = 'rgba(34,197,94,.25)';
+    } else {
+      throw new Error();
+    }
+  } catch {
+    const badge = document.getElementById('api-status');
+    badge.textContent = 'API offline';
+    badge.style.background = 'rgba(239,68,68,.12)';
+    badge.style.color = '#ef4444';
+    badge.style.borderColor = 'rgba(239,68,68,.25)';
+  }
+}
+checkHealth();
+
+// ── Help popover ──────────────────────────────────────────────────────────
+document.getElementById('help-btn').addEventListener('click', () =>
+  document.getElementById('help-overlay').classList.add('open'));
+document.getElementById('help-close').addEventListener('click', () =>
+  document.getElementById('help-overlay').classList.remove('open'));
+document.getElementById('help-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget)
+    e.currentTarget.classList.remove('open');
+});
+
+// ── Calibration mode (auto / manual) ──────────────────────────────────────
+const calMode = { refwidth: 'auto', pileheight: 'auto' };
+
+function setMode(field, mode) {
+  calMode[field] = mode;
+  const isAuto = mode === 'auto';
+
+  if (field === 'refwidth') {
+    document.getElementById('rw-auto-btn').classList.toggle('active-tab', isAuto);
+    document.getElementById('rw-manual-btn').classList.toggle('active-tab', !isAuto);
+    document.getElementById('ref-width').disabled = isAuto;
+    document.getElementById('rw-manual-hint').style.display = isAuto ? 'none' : 'block';
+    // auto badge only shown when auto AND a value has been detected
+    if (isAuto) refreshAutoBadge('refwidth');
+    else document.getElementById('rw-auto-badge').classList.remove('visible');
+    document.getElementById('card-refwidth').classList.toggle('is-auto', isAuto);
+  } else {
+    document.getElementById('ph-auto-btn').classList.toggle('active-tab', isAuto);
+    document.getElementById('ph-manual-btn').classList.toggle('active-tab', !isAuto);
+    document.getElementById('pile-height').disabled = isAuto;
+    document.getElementById('ph-manual-hint').style.display = isAuto ? 'none' : 'block';
+    if (isAuto) refreshAutoBadge('pileheight');
+    else document.getElementById('ph-auto-badge').classList.remove('visible');
+    document.getElementById('card-pileheight').classList.toggle('is-auto', isAuto);
+  }
+}
+
+// Store last detected values so toggling back to auto restores them
+const autoValues = { refwidth: null, pileheight: null, refObject: null };
+
+function refreshAutoBadge(field) {
+  if (field === 'refwidth' && autoValues.refwidth !== null) {
+    document.getElementById('ref-width').value = autoValues.refwidth;
+    const lbl = autoValues.refObject
+      ? `via ${autoValues.refObject} (${autoValues.refwidth} cm)`
+      : `${autoValues.refwidth} cm`;
+    document.getElementById('rw-auto-label').textContent = lbl;
+    document.getElementById('rw-auto-badge').classList.add('visible');
+  }
+  if (field === 'pileheight' && autoValues.pileheight !== null) {
+    document.getElementById('pile-height').value = autoValues.pileheight;
+    document.getElementById('ph-auto-badge').classList.add('visible');
+  }
+}
+
+// Called after a successful /analyze response
+function applyAutoCalibration(data) {
+  if (data.auto_reference_width_cm !== null && data.auto_reference_width_cm !== undefined) {
+    autoValues.refwidth  = data.auto_reference_width_cm;
+    autoValues.refObject = data.auto_reference_object;
+    if (calMode.refwidth === 'auto') refreshAutoBadge('refwidth');
+  }
+  if (data.auto_pile_height_cm !== null && data.auto_pile_height_cm !== undefined) {
+    autoValues.pileheight = data.auto_pile_height_cm;
+    if (calMode.pileheight === 'auto') refreshAutoBadge('pileheight');
+  }
+}
+
+// ── Method selector ────────────────────────────────────────────────────────
+document.querySelectorAll('.method-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.method-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedMethod = btn.dataset.method;
+  });
+});
+
+// ── File upload ────────────────────────────────────────────────────────────
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) loadFile(f);
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) loadFile(fileInput.files[0]);
+});
+
+function loadFile(file) {
+  selectedFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    originalDataUrl = e.target.result;
+    document.getElementById('preview-img').src = originalDataUrl;
+    document.getElementById('preview-wrap').style.display = 'block';
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('analyze-btn').disabled = false;
+    // reset results
+    showEmpty();
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Analyze ────────────────────────────────────────────────────────────────
+document.getElementById('analyze-btn').addEventListener('click', runAnalysis);
+
+async function runAnalysis() {
+  if (!selectedFile) return;
+
+  setLoading(true);
+  hideError();
+  showEmpty();
+
+  const refWidth     = parseFloat(document.getElementById('ref-width').value) || 100;
+  const pileH        = parseFloat(document.getElementById('pile-height').value) || 30;
+  const autoCalib    = calMode.refwidth === 'auto' || calMode.pileheight === 'auto';
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+
+  const url = `/analyze?method=${selectedMethod}`
+    + `&reference_width_cm=${refWidth}`
+    + `&assumed_height_cm=${pileH}`
+    + `&auto_calibrate=${autoCalib}`
+    + `&include_overlay=true`;
+
+  try {
+    const resp = await fetch(url, { method: 'POST', body: fd });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    applyAutoCalibration(data);
+    showResults(data);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── Render results ─────────────────────────────────────────────────────────
+function showResults(data) {
+  document.getElementById('empty-state').style.display = 'none';
+
+  // ── Images ────────────────────────────────────────────────────────────
+  document.getElementById('img-original').src = originalDataUrl;
+
+  if (data.overlay_b64)
+    document.getElementById('img-overlay').src = 'data:image/png;base64,' + data.overlay_b64;
+
+  const hasDepth = !!data.depth_map_b64;
+  if (hasDepth) {
+    document.getElementById('img-depth').src        = 'data:image/png;base64,' + data.depth_map_b64;
+    document.getElementById('img-depth-debris').src = 'data:image/png;base64,' + data.depth_on_debris_b64;
+  }
+  document.getElementById('tab-depth').style.display        = hasDepth ? '' : 'none';
+  document.getElementById('tab-depth-debris').style.display = hasDepth ? '' : 'none';
+  document.getElementById('img-compare').style.display = 'block';
+
+  // method tag
+  document.getElementById('method-tag').textContent =
+    data.method === 'grounded_sam' ? 'Grounded SAM' : 'SegFormer';
+
+  // ── Stats ─────────────────────────────────────────────────────────────
+  document.getElementById('stat-detections').textContent = data.n_detections;
+  document.getElementById('stat-area').textContent       = data.surface_area_cm2.toLocaleString();
+  document.getElementById('stat-volume').textContent     = data.volume_cm3.toLocaleString();
+  document.getElementById('stat-height').textContent     = data.assumed_height_cm;
+
+  const heightSrc = document.getElementById('stat-height-src');
+  if (data.auto_pile_height_cm != null) {
+    heightSrc.textContent = '⚡ Depth Anything V2';
+    heightSrc.className   = 'stat-source auto';
+  } else {
+    heightSrc.textContent = 'manual estimate';
+    heightSrc.className   = 'stat-source manual';
+  }
+  document.getElementById('stats-grid').style.display = 'grid';
+
+  // ── Pipeline log ──────────────────────────────────────────────────────
+  const steps = buildLogSteps(data);
+  const container = document.getElementById('log-steps');
+  container.innerHTML = '';
+  steps.forEach(s => container.appendChild(makeLogStep(s)));
+  document.getElementById('log-total-time').textContent = `${data.processing_time_s}s total`;
+  document.getElementById('pipeline-log').style.display = 'block';
+
+  // auto-switch to overlay tab (then user can explore depth tabs)
+  switchTab('overlay');
+}
+
+function buildLogSteps(data) {
+  const steps = [];
+
+  // Step 1 — image loaded
+  steps.push({
+    title: 'Image loaded',
+    detail: `Ready for analysis`,
+    ok: true,
+  });
+
+  // Step 2 — debris detection
+  const methodName = data.method === 'grounded_sam' ? 'Grounded SAM' : 'SegFormer (ADE20K)';
+  if (data.n_detections > 0) {
+    const labelsHtml = (data.detected_labels || [])
+      .map((l, i) => {
+        const score = data.detection_scores && data.detection_scores[i]
+          ? ` <span style="color:var(--muted)">${(data.detection_scores[i]*100).toFixed(0)}%</span>`
+          : '';
+        return `<span class="chip" style="margin-right:4px">${l}${score}</span>`;
+      }).join('');
+    steps.push({
+      title: `Debris detected — ${data.n_detections} region(s)`,
+      detail: `<b>${methodName}</b> &nbsp;·&nbsp; ${data.mask_pixel_count.toLocaleString()} masked pixels<br>${labelsHtml || ''}`,
+      ok: true,
+    });
+  } else {
+    steps.push({
+      title: 'No debris detected',
+      detail: `<b>${methodName}</b> found no regions above threshold. Try a different method or lower threshold.`,
+      ok: false,
+    });
+  }
+
+  // Step 3 — reference width calibration
+  if (data.auto_reference_width_cm != null) {
+    const conf = data.auto_reference_confidence
+      ? `(${(data.auto_reference_confidence*100).toFixed(0)}% confidence)`
+      : '';
+    steps.push({
+      title: 'Reference width auto-calibrated',
+      detail: `Detected <span class="highlight">${data.auto_reference_object}</span> ${conf}<br>`
+             +`Image width = <span class="highlight">${data.auto_reference_width_cm} cm</span>`,
+      ok: true,
+    });
+  } else {
+    steps.push({
+      title: 'Reference width — manual',
+      detail: `No vehicle/object detected for auto-calibration.<br>`
+             +`Using manual value: <span class="warn">${data.reference_width_cm} cm</span>`,
+      ok: null,
+    });
+  }
+
+  // Step 4 — depth estimation
+  if (data.auto_pile_height_cm != null) {
+    steps.push({
+      title: 'Pile height — Depth Anything V2',
+      detail: `Metric outdoor model &nbsp;·&nbsp; `
+             +`pile height = <span class="highlight">${data.auto_pile_height_cm} cm</span><br>`
+             +`Ground depth vs debris surface compared within ${40}px border`,
+      ok: true,
+    });
+  } else {
+    steps.push({
+      title: 'Depth estimation — skipped',
+      detail: `Auto-calibrate was disabled or depth model unavailable.<br>`
+             +`Using manual height: <span class="warn">${data.assumed_height_cm} cm</span>`,
+      ok: null,
+    });
+  }
+
+  // Step 5 — gravat volume (final result)
+  steps.push({
+    volumeStep: true,
+    surface_area_cm2: data.surface_area_cm2,
+    assumed_height_cm: data.assumed_height_cm,
+    volume_cm3: data.volume_cm3,
+  });
+
+  return steps;
+}
+
+function makeLogStep(step) {
+  const div = document.createElement('div');
+
+  if (step.volumeStep) {
+    div.className = 'log-step volume-step';
+    const m3 = (step.volume_cm3 / 1_000_000).toFixed(4);
+    div.innerHTML = `
+      <div class="log-title">Gravat (debris) volume</div>
+      <div class="volume-result">
+        <span class="vol-main">${step.volume_cm3.toLocaleString()}</span>
+        <span class="vol-unit">cm³</span>
+        <span class="vol-m3">= ${m3} m³</span>
+      </div>
+      <div class="volume-formula">
+        <span class="highlight">${step.surface_area_cm2.toLocaleString()} cm²</span>
+        (debris surface area) &times; ${step.assumed_height_cm} cm (pile height)
+      </div>
+    `;
+    return div;
+  }
+
+  div.className = 'log-step';
+  const { title, detail, ok } = step;
+  const statusIcon = ok === true ? '✅' : ok === false ? '❌' : '⬜';
+  div.innerHTML = `
+    <div class="log-body">
+      <div class="log-title">${statusIcon} ${title}</div>
+      <div class="log-detail">${detail}</div>
+    </div>
+  `;
+  return div;
+}
+
+// ── Image tabs ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.img-tab').forEach(tab => {
+  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+function switchTab(name) {
+  document.querySelectorAll('.img-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.img-pane').forEach(p =>
+    p.classList.toggle('active', p.id === `pane-${name}`));
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function setLoading(on) {
+  const btn    = document.getElementById('analyze-btn');
+  const spin   = document.getElementById('spinner');
+  const label  = document.getElementById('btn-label');
+  btn.disabled = on;
+  spin.style.display  = on ? 'block' : 'none';
+  label.textContent   = on ? 'Analyzing…' : 'Analyze Debris';
+}
+
+function showEmpty() {
+  document.getElementById('empty-state').style.display   = 'flex';
+  document.getElementById('img-compare').style.display   = 'none';
+  document.getElementById('stats-grid').style.display    = 'none';
+  document.getElementById('pipeline-log').style.display  = 'none';
+}
+
+function showError(msg) {
+  const box = document.getElementById('error-box');
+  box.textContent = `Error: ${msg}`;
+  box.style.display = 'block';
+}
+
+function hideError() {
+  document.getElementById('error-box').style.display = 'none';
+}
+</script>
+</body>
+</html>
