@@ -36,8 +36,8 @@ jobs:
             pillow \
             numpy \
             opencv-python-headless \
-            torch --index-url https://download.pytorch.org/whl/cpu \
             transformers
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install package (editable)
         run: pip install -e . --no-deps
