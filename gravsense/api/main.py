@@ -19,9 +19,6 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("gravsense")
-
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,6 +31,9 @@ from gravsense.core.grounded_sam import GroundedSAMDetector
 from gravsense.core.segformer_detector import SegformerDetector
 from gravsense.core.volume import estimate_volume, mask_to_surface_area
 from PIL import Image
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("gravsense")
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 

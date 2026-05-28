@@ -50,7 +50,7 @@ jobs:
             numpy \
             opencv-python-headless \
             transformers
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
       - name: Run tests
         run: PYTHONPATH=. pytest tests/ -v --tb=short
