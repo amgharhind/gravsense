@@ -74,11 +74,30 @@ def test_root_serves_html(client: TestClient):
 # /analyze — grounded_sam
 # ---------------------------------------------------------------------------
 
+def _mock_calibrators(mock_cal, mock_depth):
+    calibrator = MagicMock()
+    calibrator.estimate_reference_width_cm.return_value = None
+    mock_cal.return_value = calibrator
+
+    depth_est = MagicMock()
+    depth_est.estimate.return_value = {
+        "height_cm": None,
+        "depth_map_b64": None,
+        "depth_on_debris_b64": None,
+    }
+    mock_depth.return_value = depth_est
+
+
 def test_analyze_grounded_sam_returns_schema(client: TestClient):
-    with patch("gravsense.api.main._grounded_sam") as mock_factory:
+    with (
+        patch("gravsense.api.main._grounded_sam") as mock_factory,
+        patch("gravsense.api.main._auto_calibrator") as mock_cal,
+        patch("gravsense.api.main._depth_estimator") as mock_depth,
+    ):
         detector = MagicMock()
         detector.detect_and_segment.return_value = _fake_detection_result()
         mock_factory.return_value = detector
+        _mock_calibrators(mock_cal, mock_depth)
 
         resp = client.post(
             "/analyze?method=grounded_sam&reference_width_cm=200",
@@ -93,16 +112,20 @@ def test_analyze_grounded_sam_returns_schema(client: TestClient):
     assert data["surface_area_cm2"] > 0
     assert data["volume_cm3"] > 0
     assert isinstance(data["processing_time_s"], float)
-    # overlay is included by default
     assert data["overlay_b64"] is not None
     assert len(data["overlay_b64"]) > 0
 
 
 def test_analyze_no_overlay_when_disabled(client: TestClient):
-    with patch("gravsense.api.main._grounded_sam") as mock_factory:
+    with (
+        patch("gravsense.api.main._grounded_sam") as mock_factory,
+        patch("gravsense.api.main._auto_calibrator") as mock_cal,
+        patch("gravsense.api.main._depth_estimator") as mock_depth,
+    ):
         detector = MagicMock()
         detector.detect_and_segment.return_value = _fake_detection_result()
         mock_factory.return_value = detector
+        _mock_calibrators(mock_cal, mock_depth)
 
         resp = client.post(
             "/analyze?include_overlay=false",
@@ -118,7 +141,11 @@ def test_analyze_no_overlay_when_disabled(client: TestClient):
 # ---------------------------------------------------------------------------
 
 def test_analyze_segformer_returns_schema(client: TestClient):
-    with patch("gravsense.api.main._segformer") as mock_factory:
+    with (
+        patch("gravsense.api.main._segformer") as mock_factory,
+        patch("gravsense.api.main._auto_calibrator") as mock_cal,
+        patch("gravsense.api.main._depth_estimator") as mock_depth,
+    ):
         detector = MagicMock()
         detector.detect_and_segment.return_value = {
             **_fake_detection_result(),
@@ -126,6 +153,7 @@ def test_analyze_segformer_returns_schema(client: TestClient):
             "n_detections": 1,
         }
         mock_factory.return_value = detector
+        _mock_calibrators(mock_cal, mock_depth)
 
         resp = client.post(
             "/analyze?method=segformer",
