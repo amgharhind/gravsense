@@ -152,6 +152,11 @@ The browser UI at `/` provides:
 7. **Pipeline log** — every step with status, detected labels + confidence, calibration source, depth value, and a dedicated **Gravat (debris) volume** result card at the end
 
 ---
+<img width="1917" height="840" alt="image" src="https://github.com/user-attachments/assets/52acaf71-6036-4091-bd47-2f7f45f1c9ad" />
+<img width="1903" height="837" alt="image" src="https://github.com/user-attachments/assets/a714bf4b-2561-4fcd-93e0-2606a33f064e" />
+<img width="1891" height="846" alt="image" src="https://github.com/user-attachments/assets/ebee2153-3e56-4acd-b2e6-e6f6c8673b83" />
+<img width="1891" height="838" alt="image" src="https://github.com/user-attachments/assets/81c68d1c-04a6-4908-b2cd-2065c32df404" />
+<img width="1900" height="845" alt="image" src="https://github.com/user-attachments/assets/7487be0a-c3e9-47d4-be79-e52595ffd4dd" />
 
 ## API
 
