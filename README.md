@@ -24,77 +24,58 @@ Everything runs server-side. The browser UI shows the result in four views: orig
 
 ## System architecture
 
-```
- ┌────────────────────────────────────────────────────────────────────────┐
- │                           CLIENT (Browser)                             │
- │          drag-and-drop upload · method selector · calibration cards    │
- └────────────────────────────┬───────────────────────────────────────────┘
-                              │  POST /analyze  (multipart, ≤ 10 MB)
-                              ▼
- ┌────────────────────────────────────────────────────────────────────────┐
- │                      FastAPI  (async, uvicorn)                         │
- │                                                                        │
- │   Middleware                                                           │
- │   ├── CORSMiddleware   — allow all origins                             │
- │   └── File size guard  — reject > 10 MB before inference              │
- │                                                                        │
- │   Validation                                                           │
- │   ├── content-type must start with image/                              │
- │   └── PIL decode check (rejects corrupt / non-image bytes)            │
- └──────────┬──────────────────┬──────────────────────────────┬──────────┘
-            │                  │                              │
-            ▼  step 1          ▼  step 2a (parallel)          ▼  step 2b (parallel)
- ┌──────────────────┐ ┌─────────────────────────┐  ┌──────────────────────────┐
- │  Debris           │ │  Pile Height             │  │  Reference Width          │
- │  Detection        │ │  depth_estimator.py      │  │  auto_calibrate.py        │
- │  grounded_sam.py  │ │                          │  │                           │
- │                   │ │  Depth Anything V2       │  │  GroundingDINO            │
- │  GroundingDINO    │ │  Metric Outdoor Small    │  │  query: truck/lorry/car   │
- │  text → boxes     │ │  per-pixel depth (m)     │  │                           │
- │       +           │ │                          │  │  bbox_width → scale       │
- │  SAM vit-base     │ │  ground ring (40 px)     │  │  known_cm ÷ fraction      │
- │  boxes → mask     │ │  − pile median           │  │                           │
- │                   │ │  = height (cm)           │  │  vegetation filter:       │
- │  vegetation       │ │                          │  │  drops tree/plant boxes   │
- │  filter applied   │ │  plasma colormap         │  │  before mask generation   │
- └────────┬──────────┘ └──────────┬───────────────┘  └──────────────┬────────────┘
-          │                       │                                  │
-          └───────────────────────┴──────────────────────────────────┘
-                                  │
-                                  ▼
-                     ┌────────────────────────┐
-                     │  volume.py             │
-                     │                        │
-                     │  pixel_scale = ref_w   │
-                     │              ÷ img_w   │
-                     │  area = pixels         │
-                     │       × scale²         │
-                     │  volume = area × height│
-                     └────────────┬───────────┘
-                                  │
-                                  ▼
-                     ┌────────────────────────┐
-                     │  JSON response         │
-                     │  + 4 base64 images     │
-                     │  (original, overlay,   │
-                     │   depth map,           │
-                     │   depth-on-debris)     │
-                     └────────────────────────┘
+```mermaid
+flowchart TD
+    Client(["Browser\nUpload image"])
+    API["FastAPI — async / uvicorn\nCORS · 10 MB file guard · content-type + PIL validation"]
+
+    Client -->|"POST /analyze"| API
+
+    API -->|"step 1"| Det
+    API -->|"step 2 — parallel"| Depth
+    API -->|"step 2 — parallel"| Cal
+
+    subgraph Det ["Debris Detection — grounded_sam.py"]
+        GD1["GroundingDINO\ntext prompt → bounding boxes"]
+        VF["Vegetation filter\ndrop tree / plant boxes"]
+        SAM["SAM vit-base\nboxes → pixel mask"]
+        GD1 --> VF --> SAM
+    end
+
+    subgraph Depth ["Pile Height — depth_estimator.py"]
+        DA["Depth Anything V2\nMetric Outdoor Small\nper-pixel depth in metres"]
+        DH["ground ring 40 px − pile median\n= pile height cm"]
+        CM["Plasma colormap\ndepth map + depth-on-debris images"]
+        DA --> DH
+        DA --> CM
+    end
+
+    subgraph Cal ["Reference Width — auto_calibrate.py"]
+        GD2["GroundingDINO\nquery: truck · lorry · car · van"]
+        SC["bbox width px → real-world scale\nref_width_cm = known_cm ÷ fraction"]
+        GD2 --> SC
+    end
+
+    SAM -->|"mask"| Vol
+    DH  -->|"height cm"| Vol
+    SC  -->|"ref_width_cm"| Vol
+
+    Vol["volume.py\npixel_scale = ref_width ÷ img_width\narea = mask_pixels × scale²\nvolume = area × height"]
+
+    Vol --> Resp["JSON response\nn_detections · surface_area_cm2 · volume_cm3\nauto_pile_height_cm · auto_reference_width_cm\n+ 4 base64 images"]
 ```
 
 **CI/CD pipeline:**
 
-```
-git push → GitHub Actions
-              │
-              ├── 1. ruff lint  (gravsense/ + tests/)
-              │
-              ├── 2. pytest  ×  Python 3.10 + 3.11
-              │       all inference mocked — no GPU needed
-              │
-              └── 3. Docker build → push to GHCR   (main branch only)
-                      ghcr.io/amgharhind/gravsense:latest
-                      ghcr.io/amgharhind/gravsense:<sha>
+```mermaid
+flowchart LR
+    Push(["git push\nmain"])
+    Lint["ruff lint\ngravsense/ + tests/"]
+    Test["pytest\nPython 3.10 + 3.11\nall inference mocked"]
+    Build["Docker build\n2-stage Python 3.10-slim"]
+    GHCR["GHCR push\nghcr.io/amgharhind/gravsense\n:latest · :sha"]
+
+    Push --> Lint --> Test --> Build --> GHCR
 ```
 
 **Baseline** — a SegFormer-b0 (ADE20K) detector is kept for benchmark comparison
