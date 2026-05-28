@@ -19,9 +19,12 @@ from pathlib import Path
 
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
+
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 from gravsense.api.schemas import AnalysisResult, DetectionMethod, HealthResponse
 from gravsense.core.auto_calibrate import AutoCalibrator
@@ -36,6 +39,12 @@ app = FastAPI(
     title="GravSense",
     description="Construction debris detection and volume estimation.",
     version="1.0.0",
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
@@ -112,6 +121,11 @@ async def analyze(
         raise HTTPException(status_code=400, detail="Uploaded file must be an image.")
 
     raw = await file.read()
+    if len(raw) > MAX_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Image too large. Maximum size is {MAX_IMAGE_BYTES // (1024*1024)} MB.",
+        )
     try:
         image = Image.open(io.BytesIO(raw)).convert("RGB")
     except Exception:
