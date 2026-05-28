@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gravsense"
-version = "1.0.0"
+version = "1.1.0"
 description = "Construction debris detection and volume estimation API"
 requires-python = ">=3.10"
 dependencies = [

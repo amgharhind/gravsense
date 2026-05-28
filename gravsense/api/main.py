@@ -13,9 +13,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import logging
 import time
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("gravsense")
 
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
@@ -34,10 +39,24 @@ MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    loop = asyncio.get_event_loop()
+    logger.info("Warming up models…")
+    await asyncio.gather(
+        loop.run_in_executor(None, _grounded_sam()._load_models),
+        loop.run_in_executor(None, _depth_estimator()._load),
+        loop.run_in_executor(None, _auto_calibrator()._load),
+    )
+    logger.info("All models ready.")
+    yield
+
+
 app = FastAPI(
     title="GravSense",
     description="Construction debris detection and volume estimation.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,

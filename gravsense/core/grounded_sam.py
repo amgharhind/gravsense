@@ -9,11 +9,12 @@ tell the model what we're looking for via a text query.
 from __future__ import annotations
 
 import numpy as np
-from PIL import Image
 import torch
+import torchvision.ops as tv_ops
+from PIL import Image
 from transformers import (
-    AutoProcessor,
     AutoModelForZeroShotObjectDetection,
+    AutoProcessor,
     SamModel,
     SamProcessor,
 )
@@ -76,8 +77,9 @@ class GroundedSAMDetector:
         self,
         image: Image.Image,
         text_query: str = DEFAULT_TEXT_QUERY,
-        box_threshold: float = 0.20,
-        text_threshold: float = 0.15,
+        box_threshold: float = 0.25,
+        text_threshold: float = 0.20,
+        nms_iou_threshold: float = 0.50,
     ) -> dict:
         """
         Run the full pipeline on a PIL image.
@@ -115,7 +117,7 @@ class GroundedSAMDetector:
         scores = detections["scores"] # Tensor (N,)
         labels = detections["labels"] # list[str]
 
-        # Drop any detection whose label matches vegetation (false positives at low threshold)
+        # Drop vegetation false positives
         keep = [
             i for i, lbl in enumerate(labels)
             if not any(v in lbl.lower() for v in _VEGETATION_TERMS)
@@ -124,6 +126,14 @@ class GroundedSAMDetector:
             boxes  = boxes[keep]
             scores = scores[keep]
             labels = [labels[i] for i in keep]
+
+        # NMS — merge overlapping boxes from different text phrases
+        # (GroundingDINO fires once per phrase; the same pile gets 5-10 boxes)
+        if len(boxes) > 1:
+            keep_nms = tv_ops.nms(boxes.float(), scores, iou_threshold=nms_iou_threshold)
+            boxes  = boxes[keep_nms]
+            scores = scores[keep_nms]
+            labels = [labels[i] for i in keep_nms.tolist()]
 
         if len(boxes) == 0:
             return {

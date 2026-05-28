@@ -20,7 +20,7 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
-      start_period: 90s   # allow time for first model download
+      start_period: 120s  # allow time for model warmup on startup
       retries: 5
 
 volumes:
