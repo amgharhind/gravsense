@@ -6,6 +6,7 @@ Construction debris detection and volume estimation from a single photograph.
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![GHCR](https://img.shields.io/badge/ghcr.io-gravsense-0d1117?logo=github)](https://github.com/amgharhind/gravsense/pkgs/container/gravsense)
+[![Version](https://img.shields.io/badge/version-1.1.0-22c55e)](https://github.com/amgharhind/gravsense/releases/tag/v1.1.0)
 
 ---
 
@@ -38,8 +39,9 @@ flowchart TD
     subgraph Det ["Debris Detection — grounded_sam.py"]
         GD1["GroundingDINO\ntext prompt → bounding boxes"]
         VF["Vegetation filter\ndrop tree / plant boxes"]
+        NMS["NMS IoU 0.50\nmerge overlapping boxes"]
         SAM["SAM vit-base\nboxes → pixel mask"]
-        GD1 --> VF --> SAM
+        GD1 --> VF --> NMS --> SAM
     end
 
     subgraph Depth ["Pile Height — depth_estimator.py"]
@@ -92,6 +94,7 @@ research approach, intentionally preserved so both methods can be compared via t
 | Needs retraining | No — open-vocabulary | No |
 | Debris in truck/skip | ✅ expanded query covers truck-bed scenes | ❌ class-based only |
 | Vegetation filter | ✅ drops tree/plant false positives | ❌ none |
+| Duplicate suppression | ✅ NMS (IoU 0.50) merges overlapping boxes | ❌ none |
 | Reference-width auto | ✅ GroundingDINO vehicle detection | ✅ same |
 | Depth auto (height) | ✅ Depth Anything V2 Metric | ✅ same |
 | Speed (CPU) | ~4–6 s | ~2–3 s |
@@ -119,6 +122,14 @@ Open **http://localhost:8000** for the UI, **http://localhost:8000/docs** for th
 
 First start downloads ~800 MB of models (GroundingDINO + SAM + Depth Anything V2).
 All subsequent starts are instant — models are cached in a named Docker volume.
+
+On every start the three models load in parallel during container startup:
+```
+INFO:gravsense:Warming up models…
+INFO:gravsense:All models ready.
+INFO:     Application startup complete.
+```
+The first `/analyze` request pays only inference time (~4–6 s on CPU), never model loading.
 
 ### Local (Python 3.10 / 3.11)
 
@@ -206,7 +217,7 @@ The browser UI at `/` provides:
 ### `GET /health`
 
 ```json
-{ "status": "ok", "version": "1.0.0" }
+{ "status": "ok", "version": "1.1.0" }
 ```
 
 ---
@@ -252,15 +263,20 @@ rubble in truck bed · construction waste · excavation debris ·
 mixed debris · rock debris
 ```
 
-Thresholds are set to `box_threshold=0.20 / text_threshold=0.15` to catch debris inside
-truck beds and skips, where the visual context lowers model confidence.
+Thresholds are set to `box_threshold=0.25 / text_threshold=0.20` — high enough to avoid
+background false positives, low enough to catch debris inside truck beds and skips.
+
+**NMS — duplicate suppression**
+
+GroundingDINO fires once per text phrase, so a single debris pile can produce 5–10
+overlapping boxes. Non-Maximum Suppression (IoU threshold 0.50) merges them into one
+before SAM generates the mask — ensuring accurate pixel counts and a clean detection count.
 
 **Vegetation false-positive filter**
 
-After GroundingDINO returns detections, any box whose matched label contains a
-vegetation term (`tree`, `plant`, `bush`, `grass`, `shrub`, `foliage`, …) is discarded
-before SAM generates its mask. This prevents trees and hedges visible in the background
-from being counted as debris.
+After NMS, any box whose matched label contains a vegetation term (`tree`, `plant`,
+`bush`, `grass`, `shrub`, `foliage`, …) is discarded before SAM generates its mask.
+This prevents background trees and hedges from being counted as debris.
 
 ---
 
@@ -316,8 +332,9 @@ All model inference is mocked. CI runs in ~60 seconds without a GPU.
 | `depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf` | HuggingFace | Monocular depth (metres) |
 | `nvidia/segformer-b0-finetuned-ade-512-512` | HuggingFace | Semantic segmentation baseline |
 
-All models download automatically on first request and are cached in the Docker volume.
-No API keys or accounts required.
+All models download automatically on first start and are cached in the Docker volume.
+No API keys or accounts required. All three load in parallel at container startup
+so the first request pays only inference time.
 
 ---
 
@@ -333,19 +350,20 @@ any other component.
 <!--
 ## CV line
 
-Built **GravSense**: a production debris detection and volume estimation system.
+Built **GravSense** (v1.1.0): a production debris detection and volume estimation system.
 Replaced a fragile ADE20K dominant-class heuristic with an open-vocabulary
-**Grounded SAM** pipeline (GroundingDINO text → bounding boxes → SAM masks).
+**Grounded SAM** pipeline (GroundingDINO text → bounding boxes → NMS → SAM masks).
 Tuned the detector for real-world scenes: expanded the text query to cover
-truck-bed and skip-container debris, lowered detection thresholds for low-contrast
-scenes, and added a post-detection **vegetation filter** that drops tree/plant
-false positives before SAM mask generation.
+truck-bed and skip-container debris, added **NMS** (IoU 0.50) to suppress the 5–10
+duplicate boxes GroundingDINO produces per pile, and a post-detection **vegetation filter**
+that drops tree/plant false positives before mask generation.
 Added **Depth Anything V2** (metric outdoor) for automatic pile-height estimation
 from a single RGB photo, and **GroundingDINO auto-calibration** for reference-width
 detection — both running in parallel as part of the same API request.
-Deployed as an async **FastAPI** service (CORS, 10 MB file guard, thread-pool executor,
-Pydantic schemas), containerised with **Docker Compose** (model cache volume), browser
-UI with depth visualisation and a dedicated **Gravat (debris) volume** result card,
+Deployed as an async **FastAPI** service (CORS, 10 MB file guard, parallel model warmup
+at startup, structured logging, thread-pool executor, Pydantic schemas), containerised
+with **Docker Compose** (model cache volume), single-file browser UI with depth
+visualisation and a dedicated **Gravat (debris) volume** result card,
 and a **GitHub Actions** CI/CD pipeline (ruff lint, mocked-inference pytest on
 Python 3.10 + 3.11, Docker build + push to GHCR on every green main commit).
 -->
