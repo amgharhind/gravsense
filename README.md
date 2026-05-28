@@ -5,6 +5,7 @@ Construction debris detection and volume estimation from a single photograph.
 [![CI](https://github.com/amgharhind/gravsense/actions/workflows/ci.yml/badge.svg)](https://github.com/amgharhind/gravsense/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![GHCR](https://img.shields.io/badge/ghcr.io-gravsense-0d1117?logo=github)](https://github.com/amgharhind/gravsense/pkgs/container/gravsense)
 
 ---
 
@@ -21,39 +22,79 @@ Everything runs server-side. The browser UI shows the result in four views: orig
 
 ---
 
-## Architecture
+## System architecture
 
 ```
-Browser  ──POST /analyze──►  FastAPI  (async, thread-pool executor)
-                                │
-                ┌───────────────┼───────────────────────────────┐
-                │               │                               │
-                ▼               ▼ (parallel)                    ▼ (parallel)
-       ┌─────────────────┐  ┌───────────────────────┐  ┌──────────────────────┐
-       │  Debris          │  │  Pile Height           │  │  Reference Width     │
-       │  Detection       │  │  (Depth Anything V2)   │  │  Auto-calibration    │
-       │                  │  │                        │  │                      │
-       │  GroundingDINO   │  │  Metric Outdoor Small  │  │  GroundingDINO       │
-       │  (text→boxes)    │  │  depth map (metres)    │  │  (detects truck/car) │
-       │      +           │  │                        │  │  → known width ÷     │
-       │  SAM vit-base    │  │  pile = ground depth   │  │    bbox fraction     │
-       │  (boxes→mask)    │  │      − pile depth      │  │                      │
-       └────────┬─────────┘  └──────────┬────────────┘  └──────────┬───────────┘
-                │                       │                           │
-                └───────────────────────┴───────────────────────────┘
-                                        │
-                                        ▼
-                             ┌─────────────────────┐
-                             │   volume.py          │
-                             │   mask → area (cm²)  │
-                             │   area × height (cm) │
-                             │   = volume (cm³)     │
-                             └─────────────────────┘
-                                        │
-                                        ▼
-                             JSON response + 4 images
-                             (overlay, depth map,
-                              depth-on-debris, original)
+ ┌────────────────────────────────────────────────────────────────────────┐
+ │                           CLIENT (Browser)                             │
+ │          drag-and-drop upload · method selector · calibration cards    │
+ └────────────────────────────┬───────────────────────────────────────────┘
+                              │  POST /analyze  (multipart, ≤ 10 MB)
+                              ▼
+ ┌────────────────────────────────────────────────────────────────────────┐
+ │                      FastAPI  (async, uvicorn)                         │
+ │                                                                        │
+ │   Middleware                                                           │
+ │   ├── CORSMiddleware   — allow all origins                             │
+ │   └── File size guard  — reject > 10 MB before inference              │
+ │                                                                        │
+ │   Validation                                                           │
+ │   ├── content-type must start with image/                              │
+ │   └── PIL decode check (rejects corrupt / non-image bytes)            │
+ └──────────┬──────────────────┬──────────────────────────────┬──────────┘
+            │                  │                              │
+            ▼  step 1          ▼  step 2a (parallel)          ▼  step 2b (parallel)
+ ┌──────────────────┐ ┌─────────────────────────┐  ┌──────────────────────────┐
+ │  Debris           │ │  Pile Height             │  │  Reference Width          │
+ │  Detection        │ │  depth_estimator.py      │  │  auto_calibrate.py        │
+ │  grounded_sam.py  │ │                          │  │                           │
+ │                   │ │  Depth Anything V2       │  │  GroundingDINO            │
+ │  GroundingDINO    │ │  Metric Outdoor Small    │  │  query: truck/lorry/car   │
+ │  text → boxes     │ │  per-pixel depth (m)     │  │                           │
+ │       +           │ │                          │  │  bbox_width → scale       │
+ │  SAM vit-base     │ │  ground ring (40 px)     │  │  known_cm ÷ fraction      │
+ │  boxes → mask     │ │  − pile median           │  │                           │
+ │                   │ │  = height (cm)           │  │  vegetation filter:       │
+ │  vegetation       │ │                          │  │  drops tree/plant boxes   │
+ │  filter applied   │ │  plasma colormap         │  │  before mask generation   │
+ └────────┬──────────┘ └──────────┬───────────────┘  └──────────────┬────────────┘
+          │                       │                                  │
+          └───────────────────────┴──────────────────────────────────┘
+                                  │
+                                  ▼
+                     ┌────────────────────────┐
+                     │  volume.py             │
+                     │                        │
+                     │  pixel_scale = ref_w   │
+                     │              ÷ img_w   │
+                     │  area = pixels         │
+                     │       × scale²         │
+                     │  volume = area × height│
+                     └────────────┬───────────┘
+                                  │
+                                  ▼
+                     ┌────────────────────────┐
+                     │  JSON response         │
+                     │  + 4 base64 images     │
+                     │  (original, overlay,   │
+                     │   depth map,           │
+                     │   depth-on-debris)     │
+                     └────────────────────────┘
+```
+
+**CI/CD pipeline:**
+
+```
+git push → GitHub Actions
+              │
+              ├── 1. ruff lint  (gravsense/ + tests/)
+              │
+              ├── 2. pytest  ×  Python 3.10 + 3.11
+              │       all inference mocked — no GPU needed
+              │
+              └── 3. Docker build → push to GHCR   (main branch only)
+                      ghcr.io/amgharhind/gravsense:latest
+                      ghcr.io/amgharhind/gravsense:<sha>
 ```
 
 **Baseline** — a SegFormer-b0 (ADE20K) detector is kept for benchmark comparison
@@ -78,7 +119,14 @@ research approach, intentionally preserved so both methods can be compared via t
 
 ## Quickstart
 
-### Docker (recommended — zero setup)
+### Docker — pull from GHCR (no build needed)
+
+```bash
+docker pull ghcr.io/amgharhind/gravsense:latest
+docker run -p 8000:8000 ghcr.io/amgharhind/gravsense:latest
+```
+
+### Docker — build from source
 
 ```bash
 git clone https://github.com/amgharhind/gravsense
@@ -120,7 +168,7 @@ The browser UI at `/` provides:
    - `Depth Map` — full-image plasma colormap (yellow = close, purple = far)
    - `Depth on Debris` — depth colors inside the mask only, greyed outside
 6. **Stats** — detections, surface area, pile height (with source badge), volume
-7. **Pipeline log** — every step with status, detected labels + confidence, calibration source, depth value, and a dedicated **Gravat (debris) volume** result card at the end showing the final volume prominently
+7. **Pipeline log** — every step with status, detected labels + confidence, calibration source, depth value, and a dedicated **Gravat (debris) volume** result card at the end
 
 ---
 
@@ -130,12 +178,20 @@ The browser UI at `/` provides:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `file` | image | — | JPEG or PNG |
+| `file` | image | — | JPEG or PNG, max 10 MB |
 | `method` | `grounded_sam` \| `segformer` | `grounded_sam` | Detection method |
 | `reference_width_cm` | float | 100 | Manual fallback — real-world image width (cm) |
 | `assumed_height_cm` | float | 30 | Manual fallback — pile height (cm) |
 | `auto_calibrate` | bool | true | Run Depth Anything V2 + GroundingDINO auto-calibration in parallel |
 | `include_overlay` | bool | true | Include base64 images in response |
+
+**Error codes:**
+
+| Code | Reason |
+|------|--------|
+| `400` | Uploaded file is not an image |
+| `413` | File exceeds 10 MB limit |
+| `422` | Image bytes could not be decoded |
 
 **Response (JSON):**
 
@@ -233,7 +289,7 @@ gravsense/
 │   ├── auto_calibrate.py      ← GroundingDINO reference-width detection
 │   └── volume.py              ← mask → surface area → volume
 └── api/
-    ├── main.py                ← FastAPI routes, async inference, lazy singletons
+    ├── main.py                ← FastAPI routes, CORS, file limit, async inference
     ├── schemas.py             ← Pydantic response models
     └── static/
         └── index.html         ← Single-file browser UI (no build step)
@@ -246,7 +302,8 @@ notebooks/
 
 Dockerfile                     ← Python 3.10-slim, 2-stage build
 docker-compose.yml             ← API + HuggingFace model cache volume
-.github/workflows/ci.yml       ← test (py 3.10 + 3.11) → docker build → smoke test
+ruff.toml                      ← linter config
+.github/workflows/ci.yml       ← lint → test (py 3.10 + 3.11) → docker build → GHCR push
 pyproject.toml
 requirements.txt
 ```
@@ -300,9 +357,9 @@ false positives before SAM mask generation.
 Added **Depth Anything V2** (metric outdoor) for automatic pile-height estimation
 from a single RGB photo, and **GroundingDINO auto-calibration** for reference-width
 detection — both running in parallel as part of the same API request.
-Deployed as an async **FastAPI** service (thread-pool executor, Pydantic schemas),
-containerised with **Docker Compose** (model cache volume), browser UI with depth
-visualisation and a dedicated **Gravat (debris) volume** result card in the
-pipeline log, and a **GitHub Actions** CI pipeline
-(mocked-inference pytest, Docker build + smoke test).
+Deployed as an async **FastAPI** service (CORS, 10 MB file guard, thread-pool executor,
+Pydantic schemas), containerised with **Docker Compose** (model cache volume), browser
+UI with depth visualisation and a dedicated **Gravat (debris) volume** result card,
+and a **GitHub Actions** CI/CD pipeline (ruff lint, mocked-inference pytest on
+Python 3.10 + 3.11, Docker build + push to GHCR on every green main commit).
 -->
