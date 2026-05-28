@@ -22,16 +22,15 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from PIL import Image
-
-MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
-
 from gravsense.api.schemas import AnalysisResult, DetectionMethod, HealthResponse
 from gravsense.core.auto_calibrate import AutoCalibrator
 from gravsense.core.depth_estimator import DepthEstimator
 from gravsense.core.grounded_sam import GroundedSAMDetector
 from gravsense.core.segformer_detector import SegformerDetector
 from gravsense.core.volume import estimate_volume, mask_to_surface_area
+from PIL import Image
+
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
@@ -144,8 +143,11 @@ async def analyze(
     ref_result:   dict | None = None
 
     if auto_calibrate:
-        depth_fn = lambda: _depth_estimator().estimate(image, mask)
-        ref_fn   = lambda: _auto_calibrator().estimate_reference_width_cm(image)
+        def depth_fn():
+            return _depth_estimator().estimate(image, mask)
+
+        def ref_fn():
+            return _auto_calibrator().estimate_reference_width_cm(image)
 
         depth_result, ref_result = await asyncio.gather(
             loop.run_in_executor(None, depth_fn),

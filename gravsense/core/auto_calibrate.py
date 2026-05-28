@@ -13,10 +13,9 @@ model download is needed.
 
 from __future__ import annotations
 
-import numpy as np
-from PIL import Image
 import torch
-from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
+from PIL import Image
+from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
 
 GDINO_MODEL_ID = "IDEA-Research/grounding-dino-tiny"
 
